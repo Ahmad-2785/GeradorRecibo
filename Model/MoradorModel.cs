@@ -12,6 +12,6 @@ public class MoradorModel
 public class MesesModel
 {
     public string Mes { get; set; }
-    public decimal Pago { get; set; }
+    public string? Pago { get; set; }
     public bool Gerado { get; set; }
 }
