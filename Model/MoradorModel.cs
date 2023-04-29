@@ -5,8 +5,9 @@ public class MoradorModel
     public int Id { get; set; }
     public string Casa { get; set; }
     public string Morador { get; set; }
+    public string Email { get; set; }
 
-    public ICollection<MesesModel> MesesPagos { get; set; }    
+    public ICollection<MesesModel> Meses { get; set; }
 }
 
 public class MesesModel
