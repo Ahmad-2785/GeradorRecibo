@@ -1,7 +1,6 @@
-﻿using GeradorRecibo.Model;
-using iTextSharp.text;
-using iTextSharp.text.pdf;
-using iTextSharp.tool.xml;
+﻿using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
+using GeradorRecibo.Model;
 using OfficeOpenXml;
 using System.Globalization;
 using System.Text;
@@ -17,16 +16,19 @@ string endereco = "";
 
 var dataAtual = DateTime.Today;
 var cultureInfo = new CultureInfo("pt-BR");
-var data = $@"{dataAtual.Day} de {dataAtual.ToString("MMMM", cultureInfo)} de {dataAtual.Year}";
+var dataExtenso = $@"{dataAtual.Day} de {dataAtual.ToString("MMMM", cultureInfo)} de {dataAtual.Year}";
+var dataAbreviada = $@"{dataAtual.ToString("MM/yyyy")}";
 
-var caminhoPdf = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-var path = @$"../../../PlanilhaPagamento-{DateTime.Today.Year}.xlsx";
+var pagamentoPath = @$"../../../PlanilhaPagamento-{DateTime.Today.Year}.xlsx";
+var reciboPath = @$"../../../RECIBO-BASE.docx";
+var caminhoGravacao = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+
 List<MoradorModel> list = new List<MoradorModel>();
 
 void Pausa()
 {
     Console.WriteLine("APERTE QUALQUER TECLA PARA CONTINUAR...");
-    Console.ReadKey();
+    //Console.ReadKey();
 }
 
 Main();
@@ -35,7 +37,7 @@ void Main()
 {
     Console.WriteLine("CARREGANDO...");
     LerArquivo();
-    //GerarRecibos();
+    GerarDadosRecibos();
 }
 
 void LerArquivo()
@@ -45,7 +47,7 @@ void LerArquivo()
 
     using (MemoryStream ms = new MemoryStream())
     {
-        using (FileStream file = new FileStream(path, FileMode.Open, FileAccess.Read))
+        using (FileStream file = new FileStream(pagamentoPath, FileMode.Open, FileAccess.Read))
         {
             byte[] bytes = new byte[file.Length];
             file.Read(bytes, 0, (int)file.Length);
@@ -116,7 +118,7 @@ void LerArquivo()
     }
 }
 
-void GerarRecibos()
+void GerarDadosRecibos()
 {
     Console.WriteLine("INICIANDO GERACAO DOS RECIBOS...");
     Pausa();
@@ -124,7 +126,7 @@ void GerarRecibos()
     foreach(var morador in list.OrderBy(x => x.Id))
     {
         //CRIACAO DA PASTA DA CASA E ANO REFERENTE
-        var caminhoGravacaoBase = $@"{caminhoPdf}\MatupaRecibos\{morador.Casa}\{DateTime.Today.Year}";
+        var caminhoGravacaoBase = $@"{caminhoGravacao}\MatupaRecibos\{morador.Casa}\{DateTime.Today.Year}";
         
         if(!Directory.Exists(caminhoGravacaoBase))
             Directory.CreateDirectory(caminhoGravacaoBase);
@@ -142,91 +144,118 @@ void GerarRecibos()
             var valor = decimal.Parse(mesesPagos.LastOrDefault().Pago == "X" ? mesesPagos.FirstOrDefault().Pago : mesesPagos.LastOrDefault().Pago);
             if (qtdMesesPagos > 2)
             {
-                texto = $@"manutenção de {mesesPagos.FirstOrDefault().Mes} até {mesesPagos.LastOrDefault().Mes}";
+                texto = $@"PGTO da cota {mesesPagos.FirstOrDefault().Mes} até {mesesPagos.LastOrDefault().Mes} / {DateTime.Today.Year}";
             }
             else
             {
-                texto = $@"manutenção de {mesesPagos.FirstOrDefault().Mes} e {mesesPagos.LastOrDefault().Mes}";
+                texto = $@"PGTO da cota {mesesPagos.FirstOrDefault().Mes} e {mesesPagos.LastOrDefault().Mes} / {DateTime.Today.Year}";
             }
 
-            var caminhoReferencia = $@"{caminhoGravacaoBase}\Recibo-{mesesPagos.FirstOrDefault().Mes}-{mesesPagos.LastOrDefault().Mes}.pdf";
+            var caminhoReferencia = $@"{caminhoGravacaoBase}\Recibo-{mesesPagos.FirstOrDefault().Mes}-{mesesPagos.LastOrDefault().Mes}.docx";
 
-            GeradorPDF(caminhoReferencia, sequencial, valor, morador.Morador, EscreverExtenso(valor), enderecoGravar, texto, data);
+            //GeradorPDF(caminhoReferencia, sequencial, valor, morador.Morador, EscreverExtenso(valor), enderecoGravar, texto, data);
+            GerarRecibos(caminhoReferencia, sequencial, morador.Morador, morador.Casa, valor, texto, String.Empty);
         }
         else if (qtdMesesPagos == 1)
         {
-            var caminhoReferencia = $@"{caminhoGravacaoBase}\Recibo-{mesesPagos.FirstOrDefault().Mes}.pdf";
+            var caminhoReferencia = $@"{caminhoGravacaoBase}\Recibo-{mesesPagos.FirstOrDefault().Mes}.docx";
 
             texto = $@"manutenção de {mesesPagos.FirstOrDefault().Mes}";
 
             var valor = decimal.Parse(mesesPagos.FirstOrDefault().Pago);
 
-            GeradorPDF(caminhoReferencia, sequencial, valor, morador.Morador, EscreverExtenso(valor), enderecoGravar, texto, data);
+            //GeradorPDF(caminhoReferencia, sequencial, valor, morador.Morador, EscreverExtenso(valor), enderecoGravar, texto, data);
+            GerarRecibos(caminhoReferencia, sequencial, morador.Morador, morador.Casa, valor, texto, String.Empty);
         }
     }
 }
 
-void GeradorPDF(string caminho, int numeroRecibo, decimal valor, string morador, string valorExtenso, string endereco, string texto, string data)
+//UTILIZA UMA BASE DE LAYOUT EM DOCX E SUBSTITUI AS PALAVRAS BASE
+void GerarRecibos(string caminhoGravacao, int sequencia, string morador, string casa, decimal valor, string observacao, string cobrador)
 {
-    #region CRIACAO DO ARQUIVO
-    Document doc = new Document(PageSize.A6.Rotate());
-    doc.SetMargins(10, 10, 10, 10);
-    FileStream fs = new FileStream(caminho, FileMode.Create, FileAccess.Write);
-    PdfWriter writer = PdfWriter.GetInstance(doc, fs);
-    doc.Open();
-    #endregion
+    File.Copy(reciboPath, caminhoGravacao, true);
 
-    var css = "";
-    css += ".corpo { padding: 10px; }";
-    css += ".space { padding: 20px; }";
-    css += ".campo { border: 2px solid rgb(54, 161, 223); background-color: rgb(110, 193, 241); color: white !important; padding: 10px; }";
-    css += ".fonte { font-size: 14px; color: rgb(54, 161, 223); line-height: 40px; }";
-    css += ".start { text-align: start; }";
-    css += "td { padding: 15 0 15 0; }";
-    //css += "tbody { padding: 10 }";
-    //css += "table { border: 1px solid rgb(54, 161, 223) }";
+    using (WordprocessingDocument doc = WordprocessingDocument.Open(caminhoGravacao, true))
+    {
+        var body = doc.MainDocumentPart.Document.Body;
+        foreach(var text in body.Descendants<Text>())
+        {
+            text.Text = text.Text.Replace("{seq}", $"{sequencia}/{DateTime.Today.Year}");
+            text.Text = text.Text.Replace("{morador}", morador);
+            text.Text = text.Text.Replace("{casa}", casa);
+            text.Text = text.Text.Replace("{valor}", valor.ToString("F"));
+            text.Text = text.Text.Replace("{valorExtenso}", EscreverExtenso(valor));
+            text.Text = text.Text.Replace("{observacao}", observacao);
+            text.Text = text.Text.Replace("{cobrador}", cobrador);
+            text.Text = text.Text.Replace("{data}", dataExtenso);
+            text.Text = text.Text.Replace("{dataAbrev}", dataAbreviada);
+        }
 
-    StringBuilder sb = new StringBuilder();
-    sb.AppendLine("<div class=\"corpo\">");
-    sb.AppendLine("<table style=\"width: 100%\">");
-    sb.AppendLine("<tbody>");
-    sb.AppendLine("<tr class=\"fonte\">");
-    sb.AppendLine("<td class=\"campo\"> <span>Recibo: </span> <span>{-numero-}</span> </td>");
-    sb.AppendLine("<td class=\"space\"></td>");
-    sb.AppendLine("<td class=\"start campo\"> <span>Valor:</span> <span>{-valor-}</span> </td>");
-    sb.AppendLine("</tr>");
-    sb.AppendLine("<tr class=\"fonte\">");
-    sb.AppendLine("<td colspan=\"3\"> <span>Recebi(emos) de:</span> <span>{-morador-}</span> </td>");
-    sb.AppendLine("</tr>");
-    sb.AppendLine("<tr class=\"fonte\">");
-    sb.AppendLine("<td colspan=\"3\"> <span>Valor de:</span> <span>{-valorExtenso-}</span> </td>");
-    sb.AppendLine("</tr>");
-    sb.AppendLine("<tr class=\"fonte\">");
-    sb.AppendLine("<td colspan=\"3\"> <span>Endereço: </span> <span>{-endereco-}</span> </td>");
-    sb.AppendLine("</tr>");
-    sb.AppendLine("<tr class=\"fonte\">");
-    sb.AppendLine("<td colspan=\"3\"> <span>Correspondente a </span> <span>{-texto-}</span> <span>e para clareza firmo(amos) o presente.</span> </td>");
-    sb.AppendLine("</tr>");
-    sb.AppendLine("<tr class=\"fonte\">");
-    sb.AppendLine("<td colspan=\"3\"> <span>{-data-}</span> </td>");
-    sb.AppendLine("</tr>");
-    sb.AppendLine("</tbody>");
-    sb.AppendLine("</table>");
-    sb.AppendLine("</div>");
-
-    sb.Replace("{-numero-}", numeroRecibo.ToString());
-    sb.Replace("{-valor-}", valor.ToString());
-    sb.Replace("{-morador-}", morador);
-    sb.Replace("{-valorExtenso-}", valorExtenso + " REAIS");
-    sb.Replace("{-endereco-}", endereco);
-    sb.Replace("{-texto-}", texto);
-    sb.Replace("{-data-}", data);
-
-    #region FINALIZACAO DO ARQUIVO
-    XMLWorkerHelper.GetInstance().ParseXHtml(writer, doc, new MemoryStream(Encoding.UTF8.GetBytes(sb.ToString())), new MemoryStream(Encoding.UTF8.GetBytes(css.ToString())));
-    doc.Close();
-    #endregion
+        doc.Save();
+    }
 }
+
+//void GeradorPDF(string caminho, int numeroRecibo, decimal valor, string morador, string valorExtenso, string endereco, string texto, string data)
+//{
+//    #region CRIACAO DO ARQUIVO
+//    Document doc = new Document(PageSize.A6.Rotate());
+//    doc.SetMargins(10, 10, 10, 10);
+//    FileStream fs = new FileStream(caminho, FileMode.Create, FileAccess.Write);
+//    PdfWriter writer = PdfWriter.GetInstance(doc, fs);
+//    doc.Open();
+//    #endregion
+
+//    var css = "";
+//    css += ".corpo { padding: 10px; }";
+//    css += ".space { padding: 20px; }";
+//    css += ".campo { border: 2px solid rgb(54, 161, 223); background-color: rgb(110, 193, 241); color: white !important; padding: 10px; }";
+//    css += ".fonte { font-size: 14px; color: rgb(54, 161, 223); line-height: 40px; }";
+//    css += ".start { text-align: start; }";
+//    css += "td { padding: 15 0 15 0; }";
+//    //css += "tbody { padding: 10 }";
+//    //css += "table { border: 1px solid rgb(54, 161, 223) }";
+
+//    StringBuilder sb = new StringBuilder();
+//    sb.AppendLine("<div class=\"corpo\">");
+//    sb.AppendLine("<table style=\"width: 100%\">");
+//    sb.AppendLine("<tbody>");
+//    sb.AppendLine("<tr class=\"fonte\">");
+//    sb.AppendLine("<td class=\"campo\"> <span>Recibo: </span> <span>{-numero-}</span> </td>");
+//    sb.AppendLine("<td class=\"space\"></td>");
+//    sb.AppendLine("<td class=\"start campo\"> <span>Valor:</span> <span>{-valor-}</span> </td>");
+//    sb.AppendLine("</tr>");
+//    sb.AppendLine("<tr class=\"fonte\">");
+//    sb.AppendLine("<td colspan=\"3\"> <span>Recebi(emos) de:</span> <span>{-morador-}</span> </td>");
+//    sb.AppendLine("</tr>");
+//    sb.AppendLine("<tr class=\"fonte\">");
+//    sb.AppendLine("<td colspan=\"3\"> <span>Valor de:</span> <span>{-valorExtenso-}</span> </td>");
+//    sb.AppendLine("</tr>");
+//    sb.AppendLine("<tr class=\"fonte\">");
+//    sb.AppendLine("<td colspan=\"3\"> <span>Endereço: </span> <span>{-endereco-}</span> </td>");
+//    sb.AppendLine("</tr>");
+//    sb.AppendLine("<tr class=\"fonte\">");
+//    sb.AppendLine("<td colspan=\"3\"> <span>Correspondente a </span> <span>{-texto-}</span> <span>e para clareza firmo(amos) o presente.</span> </td>");
+//    sb.AppendLine("</tr>");
+//    sb.AppendLine("<tr class=\"fonte\">");
+//    sb.AppendLine("<td colspan=\"3\"> <span>{-data-}</span> </td>");
+//    sb.AppendLine("</tr>");
+//    sb.AppendLine("</tbody>");
+//    sb.AppendLine("</table>");
+//    sb.AppendLine("</div>");
+
+//    sb.Replace("{-numero-}", numeroRecibo.ToString());
+//    sb.Replace("{-valor-}", valor.ToString());
+//    sb.Replace("{-morador-}", morador);
+//    sb.Replace("{-valorExtenso-}", valorExtenso + " REAIS");
+//    sb.Replace("{-endereco-}", endereco);
+//    sb.Replace("{-texto-}", texto);
+//    sb.Replace("{-data-}", data);
+
+//    #region FINALIZACAO DO ARQUIVO
+//    XMLWorkerHelper.GetInstance().ParseXHtml(writer, doc, new MemoryStream(Encoding.UTF8.GetBytes(sb.ToString())), new MemoryStream(Encoding.UTF8.GetBytes(css.ToString())));
+//    doc.Close();
+//    #endregion
+//}
 
 #region HELPERS
 static string EscreverExtenso(decimal valor)
