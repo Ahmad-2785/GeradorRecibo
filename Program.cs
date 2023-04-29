@@ -8,7 +8,7 @@ using System.Text;
 
 ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
-int totalCols = 27;
+int totalCols = 28;
 int cabecalho = 3;
 int conteudo = 4;
 
@@ -26,7 +26,7 @@ List<MoradorModel> list = new List<MoradorModel>();
 void Pausa()
 {
     Console.WriteLine("APERTE QUALQUER TECLA PARA CONTINUAR...");
-    //Console.ReadKey();
+    Console.ReadKey();
 }
 
 Main();
@@ -109,10 +109,9 @@ void LerArquivo()
                         list.Add(moradorModel);
                 }
 
-                Console.WriteLine("ARQUIVO CARREGADO!");                
+                Console.WriteLine("ARQUIVO CARREGADO!");
             }
         }
-
         ms.Close();
     }
 }
