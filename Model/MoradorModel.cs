@@ -12,7 +12,8 @@ public class MoradorModel
 
 public class MesesModel
 {
-    public string Mes { get; set; }
-    public string? Pago { get; set; }
+    public string? Mes { get; set; }
+    public string? Cobrador { get; set; }
+    public string? Valor { get; set; }
     public bool Gerado { get; set; }
 }

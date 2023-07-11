@@ -2,31 +2,47 @@
 using DocumentFormat.OpenXml.Wordprocessing;
 using GeradorRecibo.Model;
 using OfficeOpenXml;
+using System.Diagnostics;
 using System.Globalization;
-using System.Text;
 
 ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
-int totalCols = 28;
+//TOTAL DE COLUNAS DO EXCEL
+int totalCols = 40;
+//LINHA DO CABECALHO
 int cabecalho = 3;
+//LINHA DO INICIO DO CONTEUDO DA TABELA
 int conteudo = 4;
 
+//O RECIBO POSSUI UMA SEQUENCIA A SER SEGUIDA
 int sequencial = 1;
+//VARIAVEL PARA GUARDAR O ENDERECO QUE SERA COLOCADO NO RECIBO
 string endereco = "";
 
+//DATA ATUAL PARA SER COLOCADA NO RECIBO
 var dataAtual = DateTime.Today;
+//CONFIGURACAO DA LINGUA USADA NO PROJETO
 var cultureInfo = new CultureInfo("pt-BR");
+//DATA POR EXTENSO PARA ASSINATURA DO RECIBO
 var dataExtenso = $@"{dataAtual.Day} de {dataAtual.ToString("MMMM", cultureInfo)} de {dataAtual.Year}";
+//DATA ABREVIADA PARA SER COLOCADA NO CANHOTO DO RECIBO
 var dataAbreviada = $@"{dataAtual.ToString("MM/yyyy")}";
 
-var pagamentoPath = @$"../../../PlanilhaPagamento-{DateTime.Today.Year}.xlsx";
-var reciboPath = @$"../../../RECIBO-BASE.docx";
-var caminhoGravacao = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+//CAMINHO DE ONDE QUER QUE OS ARQUIVOS SEJAM GRAVADOS
+var caminhoGravacao = $@"C:\Users\sciam\Desktop";
 
+//CAMINHO DO TEMPLATE DO EXCEL USADO
+var pagamentoPath = $"{AppDomain.CurrentDomain.BaseDirectory}/Templates/PlanilhaPagamento-{DateTime.Today.Year}.xlsx";
+//CAMINHO DO TEMPLATE DO DOCX DO RECIBO
+var reciboPath = $"{AppDomain.CurrentDomain.BaseDirectory}/Templates/RECIBO-BASE.docx";
+
+//INICIALIZACAO DA LISTA QUE VAI GUARDAR OS ITENS OBTIDOS DO EXCEL
 List<MoradorModel> list = new List<MoradorModel>();
 
+//DE MOMENTO DESABILITADO PARA SER MAIS RAPIDO A EXECUCAO
 void Pausa()
 {
+    Console.WriteLine();
     Console.WriteLine("APERTE QUALQUER TECLA PARA CONTINUAR...");
     //Console.ReadKey();
 }
@@ -35,6 +51,7 @@ Main();
 
 void Main()
 {
+    Console.WriteLine();
     Console.WriteLine("CARREGANDO...");
     LerArquivo();
     GerarDadosRecibos();
@@ -42,6 +59,7 @@ void Main()
 
 void LerArquivo()
 {
+    Console.WriteLine();
     Console.WriteLine("INICIANDO LEITURA DO ARQUIVO...");
     Pausa();
 
@@ -59,58 +77,43 @@ void LerArquivo()
 
                 //BASE ENDERECO
                 endereco = worksheet.Cells[1, 2].Value.ToString();
+                
                 //SEQUENCIAL
                 sequencial = int.Parse(worksheet.Cells[2, 2].Value.ToString());
 
                 for (int row = conteudo; row < worksheet.Dimension.Rows; row++)
                 {
-                    MoradorModel moradorModel = new MoradorModel();
-                    MesesModel mesModel = new MesesModel();
+                    MoradorModel moradorModel = new MoradorModel();                    
                     moradorModel.Meses = new List<MesesModel>();
 
-                    for (int i = 1; i <= totalCols; i ++)
-                    {
-                        var value = worksheet.Cells[row, i].Value;
+                    //COLUNAS FIXAS
+                    moradorModel.Id = Int32.Parse(worksheet.Cells[row,1].Value.ToString());
+                    moradorModel.Casa = worksheet.Cells[row, 2].Value != null ? worksheet.Cells[row, 2].Value.ToString() : "";
+                    moradorModel.Morador = worksheet.Cells[row, 3].Value != null ? worksheet.Cells[row, 3].Value.ToString() : "";
+                    moradorModel.Email = worksheet.Cells[row, 4].Value != null ? worksheet.Cells[row, 4].Value.ToString() : "";
 
-                        if(i == 1)
-                        {
-                            if (value == null)
-                                break;
-                            moradorModel.Id = int.Parse(value.ToString());
-                        }
-                        else if(i == 2)
-                        {
-                            moradorModel.Casa = value.ToString();
-                        }
-                        else if (i == 3)
-                        {
-                            moradorModel.Morador = value.ToString();
-                        }
-                        else if (i == 4)
-                        {
-                            moradorModel.Email = value == null ? "" : value.ToString();
-                        }
-                        else
-                        {
-                            if (i % 2 != 0)
-                            {
-                                var mes = worksheet.Cells[cabecalho, i].Value;
-                                mesModel.Mes = mes.ToString();
-                                mesModel.Pago = value == null ? null : value.ToString();
-                            }
-                            else
-                            {
-                                mesModel.Gerado = value == null ? false : true;
-                                moradorModel.Meses.Add(mesModel);
-                                mesModel = new MesesModel();
-                            }
-                        }
+                    //COLUNAS QUE SE REPETEM
+                    for (int i = 5; i <= totalCols; i += 3)
+                    {
+                        MesesModel mesModel = new MesesModel();
+
+                        //NOME DO MES
+                        mesModel.Mes = worksheet.Cells[3, i].Value.ToString();
+                        //VALOR PAGO
+                        mesModel.Valor = worksheet.Cells[row, i].Value != null ? worksheet.Cells[row, i].Value.ToString() : "";
+                        //NOME DO COBRADOR
+                        mesModel.Cobrador = worksheet.Cells[row, i + 1].Value != null ? worksheet.Cells[row, i + 1].Value.ToString() : "";
+                        //RECIBO GERADO
+                        mesModel.Gerado = worksheet.Cells[row, i + 2].Value.ToString() == "Sim" ? true : false;
+
+                        moradorModel.Meses.Add(mesModel);
                     }
 
                     if(moradorModel.Id > 0)
                         list.Add(moradorModel);
                 }
 
+                Console.WriteLine();
                 Console.WriteLine("ARQUIVO CARREGADO!");
             }
         }
@@ -120,6 +123,7 @@ void LerArquivo()
 
 void GerarDadosRecibos()
 {
+    Console.WriteLine();
     Console.WriteLine("INICIANDO GERACAO DOS RECIBOS...");
     Pausa();
 
@@ -131,17 +135,18 @@ void GerarDadosRecibos()
         if(!Directory.Exists(caminhoGravacaoBase))
             Directory.CreateDirectory(caminhoGravacaoBase);
 
+        Console.WriteLine();
         Console.WriteLine($@"MORADOR: {morador.Morador}");
         Console.WriteLine($@"CASA: {morador.Casa}");
 
-        var mesesPagos = morador.Meses.Where(x => x.Pago != null && !x.Gerado);
+        var mesesPagos = morador.Meses.Where(x => !string.IsNullOrEmpty(x.Valor) && !x.Gerado);
         var qtdMesesPagos = mesesPagos.Count();
         var enderecoGravar = endereco.Replace("X", morador.Casa);
         var texto = "";
 
         if (qtdMesesPagos > 1)
         {
-            var valor = decimal.Parse(mesesPagos.LastOrDefault().Pago == "X" ? mesesPagos.FirstOrDefault().Pago : mesesPagos.LastOrDefault().Pago);
+            var valor = decimal.Parse(mesesPagos.LastOrDefault().Valor == "X" ? mesesPagos.FirstOrDefault().Valor : mesesPagos.LastOrDefault().Valor);
             if (qtdMesesPagos > 2)
             {
                 texto = $@"PGTO da cota {mesesPagos.FirstOrDefault().Mes} até {mesesPagos.LastOrDefault().Mes} / {DateTime.Today.Year}";
@@ -151,37 +156,45 @@ void GerarDadosRecibos()
                 texto = $@"PGTO da cota {mesesPagos.FirstOrDefault().Mes} e {mesesPagos.LastOrDefault().Mes} / {DateTime.Today.Year}";
             }
 
-            var caminhoReferencia = $@"{caminhoGravacaoBase}\Recibo-{mesesPagos.FirstOrDefault().Mes}-{mesesPagos.LastOrDefault().Mes}.docx";
+            var nomeArquivo = $@"Recibo-{mesesPagos.FirstOrDefault().Mes}-{mesesPagos.LastOrDefault().Mes}.docx";
 
-            //GeradorPDF(caminhoReferencia, sequencial, valor, morador.Morador, EscreverExtenso(valor), enderecoGravar, texto, data);
-            GerarRecibos(caminhoReferencia, sequencial, morador.Morador, morador.Casa, valor, texto, String.Empty);
+            GerarRecibos(caminhoGravacaoBase, nomeArquivo, sequencial, morador.Morador, morador.Casa, valor, texto, mesesPagos.LastOrDefault().Cobrador);
+            GerarPDF(caminhoGravacaoBase, nomeArquivo);
+
+            //INCREMENTAR O SEQUENCIAL
+            sequencial++;
         }
         else if (qtdMesesPagos == 1)
         {
-            var caminhoReferencia = $@"{caminhoGravacaoBase}\Recibo-{mesesPagos.FirstOrDefault().Mes}.docx";
+            var nomeArquivo = $@"Recibo-{mesesPagos.FirstOrDefault().Mes}.docx";
 
             texto = $@"manutenção de {mesesPagos.FirstOrDefault().Mes}";
 
-            var valor = decimal.Parse(mesesPagos.FirstOrDefault().Pago);
+            var valor = decimal.Parse(mesesPagos.FirstOrDefault().Valor);
 
-            //GeradorPDF(caminhoReferencia, sequencial, valor, morador.Morador, EscreverExtenso(valor), enderecoGravar, texto, data);
-            GerarRecibos(caminhoReferencia, sequencial, morador.Morador, morador.Casa, valor, texto, String.Empty);
-        }
+            GerarRecibos(caminhoGravacaoBase, nomeArquivo, sequencial, morador.Morador, morador.Casa, valor, texto, mesesPagos.FirstOrDefault().Cobrador);
+            GerarPDF(caminhoGravacaoBase, nomeArquivo);
+            
+            //INCREMENTAR O SEQUENCIAL
+            sequencial++;
+        }        
     }
 }
 
-//UTILIZA UMA BASE DE LAYOUT EM DOCX E SUBSTITUI AS PALAVRAS BASE
-void GerarRecibos(string caminhoGravacao, int sequencia, string morador, string casa, decimal valor, string observacao, string cobrador)
+//UTILIZA UMA BASE DE LAYOUT EM PDF E SUBSTITUI AS PALAVRAS PARA GERAR OS RECIBOS
+void GerarRecibos(string caminhoGravacao, string nomeArquivo, int sequencia, string morador, string casa, decimal valor, string observacao, string cobrador)
 {
-    File.Copy(reciboPath, caminhoGravacao, true);
+    var path = $@"{caminhoGravacao}\{nomeArquivo}";
 
-    using (WordprocessingDocument doc = WordprocessingDocument.Open(caminhoGravacao, true))
+    File.Copy(reciboPath, path, true);
+
+    using (WordprocessingDocument doc = WordprocessingDocument.Open(path, true))
     {
         var body = doc.MainDocumentPart.Document.Body;
-        foreach(var text in body.Descendants<Text>())
-        {
-            text.Text = text.Text.Replace("{seq}", $"{sequencia}/{DateTime.Today.Year}");
+        foreach (var text in body.Descendants<Text>())
+        { 
             text.Text = text.Text.Replace("{morador}", morador);
+            text.Text = text.Text.Replace("{seq}", $"{sequencia}/{DateTime.Today.Year}");
             text.Text = text.Text.Replace("{casa}", casa);
             text.Text = text.Text.Replace("{valor}", valor.ToString("F"));
             text.Text = text.Text.Replace("{valorExtenso}", EscreverExtenso(valor));
@@ -190,72 +203,37 @@ void GerarRecibos(string caminhoGravacao, int sequencia, string morador, string 
             text.Text = text.Text.Replace("{data}", dataExtenso);
             text.Text = text.Text.Replace("{dataAbrev}", dataAbreviada);
         }
-
         doc.Save();
     }
+
+    Console.WriteLine("RECIBO GERADO !!!");
 }
 
-//void GeradorPDF(string caminho, int numeroRecibo, decimal valor, string morador, string valorExtenso, string endereco, string texto, string data)
-//{
-//    #region CRIACAO DO ARQUIVO
-//    Document doc = new Document(PageSize.A6.Rotate());
-//    doc.SetMargins(10, 10, 10, 10);
-//    FileStream fs = new FileStream(caminho, FileMode.Create, FileAccess.Write);
-//    PdfWriter writer = PdfWriter.GetInstance(doc, fs);
-//    doc.Open();
-//    #endregion
+//USADO PARA CONVERTER O DOCX PARA PDF COM O LIBREOFFICE COMO SERVICO DO WINDOWS
+void GerarPDF(string caminhoGravacaoBase, string arquivoDocx)
+{
+    var path = $@"{caminhoGravacaoBase}\{arquivoDocx}";    
+    var outFile = $@"{caminhoGravacaoBase}";
 
-//    var css = "";
-//    css += ".corpo { padding: 10px; }";
-//    css += ".space { padding: 20px; }";
-//    css += ".campo { border: 2px solid rgb(54, 161, 223); background-color: rgb(110, 193, 241); color: white !important; padding: 10px; }";
-//    css += ".fonte { font-size: 14px; color: rgb(54, 161, 223); line-height: 40px; }";
-//    css += ".start { text-align: start; }";
-//    css += "td { padding: 15 0 15 0; }";
-//    //css += "tbody { padding: 10 }";
-//    //css += "table { border: 1px solid rgb(54, 161, 223) }";
+    try
+    {
+        Process process = new Process();
+        ProcessStartInfo startInfo = new ProcessStartInfo();
+        startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+        startInfo.FileName = @"C:\windows\system32\cmd.exe";
+        startInfo.Arguments = "/c \"C:\\Program Files\\LibreOffice\\program\\soffice.exe\" --headless --convert-to pdf --outdir " + outFile + " " + path;
+        process.StartInfo = startInfo;
+        process.Start();
+        process.WaitForExit();
 
-//    StringBuilder sb = new StringBuilder();
-//    sb.AppendLine("<div class=\"corpo\">");
-//    sb.AppendLine("<table style=\"width: 100%\">");
-//    sb.AppendLine("<tbody>");
-//    sb.AppendLine("<tr class=\"fonte\">");
-//    sb.AppendLine("<td class=\"campo\"> <span>Recibo: </span> <span>{-numero-}</span> </td>");
-//    sb.AppendLine("<td class=\"space\"></td>");
-//    sb.AppendLine("<td class=\"start campo\"> <span>Valor:</span> <span>{-valor-}</span> </td>");
-//    sb.AppendLine("</tr>");
-//    sb.AppendLine("<tr class=\"fonte\">");
-//    sb.AppendLine("<td colspan=\"3\"> <span>Recebi(emos) de:</span> <span>{-morador-}</span> </td>");
-//    sb.AppendLine("</tr>");
-//    sb.AppendLine("<tr class=\"fonte\">");
-//    sb.AppendLine("<td colspan=\"3\"> <span>Valor de:</span> <span>{-valorExtenso-}</span> </td>");
-//    sb.AppendLine("</tr>");
-//    sb.AppendLine("<tr class=\"fonte\">");
-//    sb.AppendLine("<td colspan=\"3\"> <span>Endereço: </span> <span>{-endereco-}</span> </td>");
-//    sb.AppendLine("</tr>");
-//    sb.AppendLine("<tr class=\"fonte\">");
-//    sb.AppendLine("<td colspan=\"3\"> <span>Correspondente a </span> <span>{-texto-}</span> <span>e para clareza firmo(amos) o presente.</span> </td>");
-//    sb.AppendLine("</tr>");
-//    sb.AppendLine("<tr class=\"fonte\">");
-//    sb.AppendLine("<td colspan=\"3\"> <span>{-data-}</span> </td>");
-//    sb.AppendLine("</tr>");
-//    sb.AppendLine("</tbody>");
-//    sb.AppendLine("</table>");
-//    sb.AppendLine("</div>");
-
-//    sb.Replace("{-numero-}", numeroRecibo.ToString());
-//    sb.Replace("{-valor-}", valor.ToString());
-//    sb.Replace("{-morador-}", morador);
-//    sb.Replace("{-valorExtenso-}", valorExtenso + " REAIS");
-//    sb.Replace("{-endereco-}", endereco);
-//    sb.Replace("{-texto-}", texto);
-//    sb.Replace("{-data-}", data);
-
-//    #region FINALIZACAO DO ARQUIVO
-//    XMLWorkerHelper.GetInstance().ParseXHtml(writer, doc, new MemoryStream(Encoding.UTF8.GetBytes(sb.ToString())), new MemoryStream(Encoding.UTF8.GetBytes(css.ToString())));
-//    doc.Close();
-//    #endregion
-//}
+        Console.WriteLine("PDF GERADO !!!");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine(ex.ToString());
+        Pausa();
+    }
+}
 
 #region HELPERS
 static string EscreverExtenso(decimal valor)
